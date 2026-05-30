@@ -266,17 +266,27 @@ class AudioEngine {
     this.onChange();
     return pid;
   }
+  _kill(rec) {                                   // immediate, authoritative teardown
+    try { rec.src.onended = null; rec.src.stop(); } catch {}
+    try { rec.gain.disconnect(); } catch {}
+    this.playing.delete(rec.pid);
+  }
   _fadeStop(rec, fade) {
+    if (rec.stopping) return;
+    if (fade <= 0) { this._kill(rec); return; }  // hard stop: drop it now, don't wait on onended
+    this.resume();                               // a stalled clock would never finish the ramp
     const now = this.ctx.currentTime, g = rec.gain.gain;
     rec.stopping = true; rec.fadeOutAt = now;
     g.cancelScheduledValues(now);
     g.setValueAtTime(Math.max(g.value, 0.0001), now);
-    if (fade > 0) { g.linearRampToValueAtTime(0.0001, now + fade); rec.src.stop(now + fade); }
-    else rec.src.stop(now);
+    g.linearRampToValueAtTime(0.0001, now + fade);
+    rec.src.stop(now + fade);
+    setTimeout(() => { if (this.playing.get(rec.pid) === rec) { this._kill(rec); this.onChange(); } }, fade * 1000 + 120);
   }
-  stopPid(pid, fade = 0) { const r = this.playing.get(pid); if (r) this._fadeStop(r, fade); }
-  stopByCue(cueId, fade = 0) { for (const r of this.playing.values()) if (r.cueId === cueId) this._fadeStop(r, fade); }
-  stopAll(fade = 0) { for (const r of this.playing.values()) this._fadeStop(r, fade); }
+  // Snapshot the values before iterating — _kill mutates the map mid-loop.
+  stopPid(pid, fade = 0) { const r = this.playing.get(pid); if (r) this._fadeStop(r, fade); this.onChange(); }
+  stopByCue(cueId, fade = 0) { for (const r of [...this.playing.values()]) if (r.cueId === cueId) this._fadeStop(r, fade); this.onChange(); }
+  stopAll(fade = 0) { for (const r of [...this.playing.values()]) this._fadeStop(r, fade); this.onChange(); }
   isPlaying(cueId) { for (const r of this.playing.values()) if (r.cueId === cueId && !r.stopping) return true; return false; }
   setPaused(p) { p ? this.ctx.suspend() : this.ctx.resume(); }
 }
@@ -335,7 +345,7 @@ async function addFiles(fileList) {
     renderList(); markDirty();
   }
 }
-function addCue(cue) { state.cues.push(cue); DB.putMeta(cue); state.current = state.cues.length - 1; afterStructural(); }
+function addCue(cue) { state.cues.push(cue); DB.putMeta(cue); afterStructural(); }  // append without moving the GO playhead
 function addStopCue() { addCue(newCue('stop', { name: 'Stop All', target: 'all', fadeOut: 2 })); }
 function addWaitCue() { addCue(newCue('wait', { name: 'Wait', preWait: 3, autoContinue: true })); }
 
