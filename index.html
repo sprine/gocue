@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoCue — Sound Cue Control</title>
+<style>
+  /* ---------- Theme ---------- */
+  :root {
+    --bg:#16181d; --panel:#1d2027; --panel-2:#23272f; --line:#2e333d;
+    --ink:#e7eaf0; --ink-dim:#9aa3b2; --ink-faint:#646c7a;
+    --go:#28c76f; --go-press:#1fa65a; --stop:#ff4d4f; --warn:#ffb02e;
+    --audio:#4c9aff; --fade:#b07cff; --wait:#5ec9c4; --sel:#2f6dff;
+    --radius:8px; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body {
+    background:var(--bg); color:var(--ink); overflow:hidden;
+    font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; user-select:none;
+  }
+  button { font:inherit; color:inherit; cursor:pointer; border:none; background:none; }
+  input,select { font:inherit; }
+
+  /* ---------- Toolbar ---------- */
+  header {
+    display:flex; align-items:center; gap:14px; padding:10px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:none;
+  }
+  .brand { font-weight:700; letter-spacing:.3px; margin-right:4px; }
+  .brand b { color:var(--go); }
+  .go-btn {
+    background:var(--go); color:#06210f; font-weight:800; font-size:18px;
+    padding:11px 30px; border-radius:var(--radius); letter-spacing:1px;
+    box-shadow:0 0 0 0 rgba(40,199,111,.5); transition:transform .04s, background .1s;
+  }
+  .go-btn:active { transform:translateY(1px); background:var(--go-press); }
+  .go-btn:disabled { background:var(--panel-2); color:var(--ink-faint); cursor:default; }
+  .tbtn {
+    padding:9px 14px; border-radius:var(--radius); background:var(--panel-2);
+    border:1px solid var(--line); color:var(--ink-dim); font-weight:600;
+  }
+  .tbtn:hover { color:var(--ink); border-color:#3c424d; }
+  .tbtn.danger:hover { color:#fff; background:var(--stop); border-color:var(--stop); }
+  .tbtn.paused { color:var(--warn); border-color:var(--warn); }
+  .spacer { flex:1; }
+  .master { display:flex; align-items:center; gap:8px; color:var(--ink-dim); }
+  .master input[type=range] { width:120px; accent-color:var(--audio); }
+  .master .db { font:12px var(--mono); width:54px; text-align:right; color:var(--ink); }
+  .status { font:12px var(--mono); color:var(--ink-dim); min-width:120px; }
+  .status b { color:var(--ink); }
+  .save-dot { width:8px; height:8px; border-radius:50%; background:var(--ink-faint); transition:background .3s; }
+  .save-dot.dirty { background:var(--warn); }
+  .save-dot.saved { background:var(--go); }
+
+  /* ---------- Main layout ---------- */
+  main { flex:1; display:flex; min-height:0; }
+  .list-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  /* Column header */
+  .cols, .row {
+    display:grid; align-items:center;
+    grid-template-columns: 14px 60px 30px 1fr 150px 76px 132px;
+    gap:10px; padding:0 14px;
+  }
+  .cols { height:30px; flex:none; color:var(--ink-faint); font-size:11px;
+    text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid var(--line);
+    background:var(--panel); }
+  .cols .r { text-align:right; }
+
+  .list { flex:1; overflow-y:auto; padding-bottom:40px; }
+  .row {
+    height:46px; border-bottom:1px solid var(--line); position:relative; cursor:pointer;
+  }
+  .row:hover { background:rgba(255,255,255,.025); }
+  .row.current { background:rgba(47,109,255,.16); box-shadow:inset 3px 0 0 var(--sel); }
+  .row.dragover-top::before, .row.dragover-bot::after {
+    content:""; position:absolute; left:0; right:0; height:2px; background:var(--sel); }
+  .row.dragover-top::before { top:-1px; } .row.dragover-bot::after { bottom:-1px; }
+
+  .dot { width:9px; height:9px; border-radius:50%; background:transparent; justify-self:center; }
+  .row.playing .dot { background:var(--go); box-shadow:0 0 8px var(--go); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 50%{opacity:.45;} }
+  .qnum { font:13px var(--mono); color:var(--ink-dim); }
+  .type-ic { width:22px; height:22px; border-radius:5px; display:grid; place-items:center;
+    font-size:12px; font-weight:800; color:#0c0f14; }
+  .type-audio{background:var(--audio);} .type-stop{background:var(--fade);} .type-wait{background:var(--wait);}
+  .qname { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qname .sub { color:var(--ink-faint); font-size:12px; }
+  .qinfo { color:var(--ink-dim); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qdur { font:12px var(--mono); color:var(--ink-dim); text-align:right; }
+  .flags { display:flex; gap:5px; justify-content:flex-end; flex-wrap:wrap; }
+  .flag { font:10px var(--mono); padding:2px 5px; border-radius:4px; background:var(--panel-2);
+    color:var(--ink-dim); border:1px solid var(--line); }
+  .flag.on { color:var(--ink); }
+
+  .empty { padding:60px 20px; text-align:center; color:var(--ink-faint); }
+  .empty h2 { color:var(--ink-dim); font-weight:600; }
+  .empty kbd { background:var(--panel-2); border:1px solid var(--line); border-radius:5px;
+    padding:1px 7px; font:12px var(--mono); color:var(--ink); }
+
+  /* ---------- Sidebar ---------- */
+  aside { width:330px; flex:none; background:var(--panel); border-left:1px solid var(--line);
+    display:flex; flex-direction:column; min-height:0; }
+  .panel-h { padding:11px 16px; font-size:12px; text-transform:uppercase; letter-spacing:.6px;
+    color:var(--ink-faint); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; }
+  .inspector { padding:14px 16px; overflow-y:auto; border-bottom:1px solid var(--line); }
+  .insp-empty { color:var(--ink-faint); padding:18px 4px; text-align:center; }
+  .field { margin-bottom:13px; }
+  .field label { display:block; font-size:11px; color:var(--ink-faint); text-transform:uppercase;
+    letter-spacing:.5px; margin-bottom:5px; }
+  .field input[type=text], .field input[type=number], .field select {
+    width:100%; padding:7px 9px; background:var(--bg); color:var(--ink);
+    border:1px solid var(--line); border-radius:6px; }
+  .field input:focus, .field select:focus { outline:none; border-color:var(--sel); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row-flex { display:flex; align-items:center; gap:8px; }
+  .vol-row label { margin:0; }
+  .vol-row input[type=range] { flex:1; accent-color:var(--audio); }
+  .vol-db { font:12px var(--mono); width:52px; text-align:right; color:var(--ink); }
+  .chk { display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0; }
+  .chk input { width:16px; height:16px; accent-color:var(--go); }
+  .insp-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .insp-actions button { flex:1; min-width:64px; padding:7px; border-radius:6px;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--ink-dim); font-weight:600; font-size:12px; }
+  .insp-actions button:hover { color:var(--ink); }
+  .insp-actions button.del:hover { background:var(--stop); color:#fff; border-color:var(--stop); }
+
+  /* Active monitor */
+  .monitor { flex:1; overflow-y:auto; padding:8px 12px; }
+  .mon-empty { color:var(--ink-faint); text-align:center; padding:24px 4px; font-size:13px; }
+  .mon-item { background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
+    padding:9px 11px; margin-bottom:8px; }
+  .mon-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .mon-name { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mon-name .q { font:12px var(--mono); color:var(--ink-faint); margin-right:6px; }
+  .mon-stop { color:var(--ink-faint); font-weight:700; padding:0 6px; font-size:16px; line-height:1; }
+  .mon-stop:hover { color:var(--stop); }
+  .mon-bar { height:6px; background:var(--bg); border-radius:3px; margin:8px 0 5px; overflow:hidden; }
+  .mon-fill { height:100%; width:0; background:var(--go); border-radius:3px; }
+  .mon-fill.fading { background:var(--warn); }
+  .mon-time { display:flex; justify-content:space-between; font:11px var(--mono); color:var(--ink-dim); }
+  .mon-loop { color:var(--wait); }
+
+  /* drop overlay */
+  .drop-veil { position:fixed; inset:0; background:rgba(47,109,255,.12);
+    border:3px dashed var(--sel); display:none; place-items:center; z-index:50;
+    font-size:20px; color:var(--ink); font-weight:700; pointer-events:none; }
+  .drop-veil.show { display:grid; }
+  ::-webkit-scrollbar { width:10px; } ::-webkit-scrollbar-thumb { background:#333a45; border-radius:5px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand"><b>GO</b>CUE</div>
+    <button id="go" class="go-btn">GO</button>
+    <button id="pause" class="tbtn" title="Pause / resume all (P)">❙❙ Pause</button>
+    <button id="stopAll" class="tbtn danger" title="Stop everything (Esc)">■ Stop All</button>
+    <div class="status" id="status">No cues</div>
+    <div class="spacer"></div>
+    <div class="master">
+      <span>Master</span>
+      <input type="range" id="master" min="0" max="100" value="80">
+      <span class="db" id="masterDb">−1.9 dB</span>
+    </div>
+    <button id="add" class="tbtn">+ Add Audio</button>
+    <button id="menu" class="tbtn" title="More">⋯</button>
+    <div class="save-dot" id="saveDot" title="Workspace save state"></div>
+  </header>
+
+  <main>
+    <div class="list-wrap">
+      <div class="cols">
+        <div></div><div>Cue</div><div></div><div>Name</div><div>Target / File</div>
+        <div class="r">Time</div><div class="r">Options</div>
+      </div>
+      <div class="list" id="list"></div>
+    </div>
+
+    <aside>
+      <div class="panel-h">Inspector</div>
+      <div class="inspector" id="inspector"></div>
+      <div class="panel-h">Active Cues <span id="monCount"></span></div>
+      <div class="monitor" id="monitor"></div>
+    </aside>
+  </main>
+
+  <div class="drop-veil" id="dropVeil">Drop audio files to add cues</div>
+  <input type="file" id="filePick" accept="audio/*" multiple hidden>
+
+<script type="module">
+/* ============================================================================
+   GoCue — a QLab / Go Button style sound-cue controller.
+   Architecture:
+     • state.cues  : ordered list of cue objects (plain data)
+     • state.current : the standby playhead (also the inspector selection)
+     • AudioEngine : owns the Web Audio graph + all playback/fades
+     • DB          : IndexedDB persistence (meta + audio blobs = a "show file")
+   Rendering: full list re-render on structural change; a rAF tick handles the
+   realtime monitor + playing indicators incrementally.
+   ============================================================================ */
+
+const $ = s => document.querySelector(s);
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const fmtTime = s => {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+};
+const ampToDb = a => a <= 0 ? '−∞' : (20 * Math.log10(a)).toFixed(1);
+const dbLabel = a => a <= 0 ? '−∞ dB' : `${(20*Math.log10(a)>=0?'+':'−')}${Math.abs(20*Math.log10(a)).toFixed(1)} dB`;
+const uid = () => 'c' + (counter++).toString(36) + Math.floor(performance.now()).toString(36);
+let counter = 0;
+
+/* ---------------------------------------------------------------- AudioEngine */
+class AudioEngine {
+  constructor(onChange) {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.8;
+    this.master.connect(this.ctx.destination);
+    this.playing = new Map();          // pid -> playback record
+    this.pid = 0;
+    this.onChange = onChange;          // called when the playing set changes
+  }
+  resume() { if (this.ctx.state === 'suspended') this.ctx.resume(); }
+  setMaster(a) {
+    const t = this.ctx.currentTime;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(a, t, 0.015);
+  }
+  decode(arrayBuffer) { return this.ctx.decodeAudioData(arrayBuffer); }
+
+  play(cue) {
+    if (!cue.buffer) return;
+    this.resume();
+    const ctx = this.ctx, now = ctx.currentTime, vol = clamp01(cue.volume);
+    const src = ctx.createBufferSource();
+    src.buffer = cue.buffer; src.loop = !!cue.loop;
+    const g = ctx.createGain();
+    src.connect(g).connect(this.master);
+
+    // fade in
+    if (cue.fadeIn > 0) {
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), now + cue.fadeIn);
+    } else g.gain.setValueAtTime(vol, now);
+
+    // fade out at natural end (skip for loops)
+    const dur = cue.buffer.duration;
+    let fadeStart = Infinity;
+    if (!cue.loop && cue.fadeOut > 0 && dur > cue.fadeOut) {
+      fadeStart = now + dur - cue.fadeOut;
+      g.gain.setValueAtTime(vol, fadeStart);
+      g.gain.linearRampToValueAtTime(0.0001, fadeStart + cue.fadeOut);
+    }
+    src.start(now);
+
+    const pid = ++this.pid;
+    const rec = { pid, cueId: cue.id, name: cue.name, num: cue.number,
+                  src, gain: g, startTime: now, duration: dur, loop: !!cue.loop,
+                  vol, fadeOutAt: fadeStart, stopping: false };
+    src.onended = () => { if (this.playing.get(pid) === rec) { this.playing.delete(pid); this.onChange(); } };
+    this.playing.set(pid, rec);
+    this.onChange();
+    return pid;
+  }
+  _fadeStop(rec, fade) {
+    const now = this.ctx.currentTime, g = rec.gain.gain;
+    rec.stopping = true; rec.fadeOutAt = now;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(Math.max(g.value, 0.0001), now);
+    if (fade > 0) { g.linearRampToValueAtTime(0.0001, now + fade); rec.src.stop(now + fade); }
+    else rec.src.stop(now);
+  }
+  stopPid(pid, fade = 0) { const r = this.playing.get(pid); if (r) this._fadeStop(r, fade); }
+  stopByCue(cueId, fade = 0) { for (const r of this.playing.values()) if (r.cueId === cueId) this._fadeStop(r, fade); }
+  stopAll(fade = 0) { for (const r of this.playing.values()) this._fadeStop(r, fade); }
+  isPlaying(cueId) { for (const r of this.playing.values()) if (r.cueId === cueId && !r.stopping) return true; return false; }
+  setPaused(p) { p ? this.ctx.suspend() : this.ctx.resume(); }
+}
+
+/* ---------------------------------------------------------------- Persistence */
+const DB = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('gocue', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        d.createObjectStore('meta', { keyPath: 'id' });
+        d.createObjectStore('audio', { keyPath: 'id' });
+        d.createObjectStore('app',  { keyPath: 'k' });
+      };
+      r.onsuccess = () => { this.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  _tx(store, mode) { return this.db.transaction(store, mode).objectStore(store); },
+  putMeta(c) { this._tx('meta','readwrite').put(stripCue(c)); },
+  delCue(id) { this._tx('meta','readwrite').delete(id); this._tx('audio','readwrite').delete(id); },
+  putAudio(id, blob) { this._tx('audio','readwrite').put({ id, blob }); },
+  putApp(obj) { this._tx('app','readwrite').put({ k:'state', ...obj }); },
+  getAll(store) { return new Promise(r => { const q = this._tx(store,'readonly').getAll(); q.onsuccess = () => r(q.result || []); }); },
+  getApp() { return new Promise(r => { const q = this._tx('app','readonly').get('state'); q.onsuccess = () => r(q.result); }); },
+  clearAll() { for (const s of ['meta','audio','app']) this._tx(s,'readwrite').clear(); },
+};
+const stripCue = c => { const { buffer, blob, ...meta } = c; return meta; };
+
+/* ---------------------------------------------------------------- App state */
+const state = { cues: [], current: 0, master: 0.8, paused: false };
+const engine = new AudioEngine(() => { renderMonitor(); markPlaying(); });
+
+function newCue(type = 'audio', extra = {}) {
+  return { id: uid(), number: String(state.cues.length + 1), name: 'Untitled',
+    type, volume: 1, fadeIn: 0, fadeOut: 0, preWait: 0, loop: false,
+    autoContinue: false, target: 'all', fileName: '', duration: 0,
+    buffer: null, blob: null, ...extra };
+}
+
+/* ---------------------------------------------------------------- Cue actions */
+async function addFiles(fileList) {
+  const files = [...fileList].filter(f => f.type.startsWith('audio') || /\.(wav|mp3|aif|aiff|m4a|ogg|flac)$/i.test(f.name));
+  for (const f of files) {
+    const cue = newCue('audio', { name: f.name.replace(/\.[^.]+$/, ''), fileName: f.name });
+    state.cues.push(cue);
+    try {
+      const buf = await f.arrayBuffer();
+      cue.buffer = await engine.decode(buf.slice(0));
+      cue.blob = f; cue.duration = cue.buffer.duration;
+      DB.putAudio(cue.id, f);
+    } catch (e) { cue.name = '⚠ ' + cue.name + ' (decode failed)'; }
+    DB.putMeta(cue);
+    renderList(); markDirty();
+  }
+}
+function addCue(cue) { state.cues.push(cue); DB.putMeta(cue); state.current = state.cues.length - 1; afterStructural(); }
+function addStopCue() { addCue(newCue('stop', { name: 'Stop All', target: 'all', fadeOut: 2 })); }
+function addWaitCue() { addCue(newCue('wait', { name: 'Wait', preWait: 3, autoContinue: true })); }
+
+function deleteCue(i) {
+  const c = state.cues[i]; if (!c) return;
+  engine.stopByCue(c.id, 0); DB.delCue(c.id);
+  state.cues.splice(i, 1);
+  state.current = Math.min(state.current, state.cues.length);
+  afterStructural();
+}
+function duplicateCue(i) {
+  const c = state.cues[i]; if (!c) return;
+  const copy = { ...c, id: uid(), number: c.number + 'b' };
+  state.cues.splice(i + 1, 0, copy);
+  if (copy.blob) DB.putAudio(copy.id, copy.blob);
+  DB.putMeta(copy); state.current = i + 1; afterStructural();
+}
+function moveCue(from, to) {
+  if (to < 0 || to >= state.cues.length) return;
+  const [c] = state.cues.splice(from, 1);
+  state.cues.splice(to, 0, c);
+  state.current = to; afterStructural();
+}
+function afterStructural() { renderList(); renderInspector(); markDirty(); }
+
+/* ---------------------------------------------------------------- Firing / GO */
+function execute(cue) {
+  if (cue.type === 'audio') engine.play(cue);
+  else if (cue.type === 'stop') {
+    if (cue.target === 'all') engine.stopAll(cue.fadeOut);
+    else engine.stopByCue(cue.target, cue.fadeOut);
+  }
+  // 'wait' is a no-op; it only matters via preWait + autoContinue sequencing
+}
+function fireOne(i) {
+  const cue = state.cues[i]; if (!cue) return;
+  // Firing must never block playhead advancement, so isolate any failure here.
+  try {
+    if (cue.preWait > 0) setTimeout(() => { try { execute(cue); } catch (e) { console.error('cue', cue.number, e); } }, cue.preWait * 1000);
+    else execute(cue);
+  } catch (e) { console.error('cue', cue.number, e); }
+}
+function go() {
+  engine.resume();
+  let i = state.current;
+  if (i < 0 || i >= state.cues.length) return;       // past end of list
+  let last = i;
+  while (true) {                                       // fire the auto-continue chain
+    fireOne(last);
+    if (state.cues[last].autoContinue && last + 1 < state.cues.length) last++;
+    else break;
+  }
+  setCurrent(last + 1);                                // always advance, even if a cue errored
+}
+function setCurrent(i) {
+  state.current = Math.max(0, Math.min(i, state.cues.length));
+  markCurrent(); renderInspector(); renderStatus(); scrollCurrentIntoView();
+  DB.putApp({ current: state.current, master: state.master });
+}
+
+/* ---------------------------------------------------------------- Rendering */
+const list = $('#list');
+const rowEls = new Map();   // cueId -> row element (for cheap live updates)
+
+const TYPE = { audio:{ic:'♪',cls:'type-audio'}, stop:{ic:'■',cls:'type-stop'}, wait:{ic:'⏱',cls:'type-wait'} };
+
+function renderList() {
+  rowEls.clear();
+  if (!state.cues.length) {
+    list.innerHTML = `<div class="empty"><h2>No cues yet</h2>
+      <p>Drop audio files anywhere, or click <b>+ Add Audio</b>.</p>
+      <p style="margin-top:18px;color:var(--ink-faint)">
+        <kbd>Space</kbd> GO &nbsp; <kbd>Esc</kbd> Stop All &nbsp; <kbd>↑</kbd><kbd>↓</kbd> move playhead</p></div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  state.cues.forEach((c, i) => {
+    const t = TYPE[c.type];
+    const row = document.createElement('div');
+    row.className = 'row' + (i === state.current ? ' current' : '');
+    row.draggable = true; row.dataset.i = i;
+    const info = c.type === 'stop'
+      ? (c.target === 'all' ? 'All cues' : 'Cue ' + (cueById(c.target)?.number ?? '?'))
+      : (c.fileName || '—');
+    const dur = c.type === 'audio' ? (c.loop ? '∞ loop' : fmtTime(c.duration)) : (c.type==='stop'?'':'');
+    row.innerHTML = `
+      <div class="dot"></div>
+      <div class="qnum">${esc(c.number)}</div>
+      <div class="type-ic ${t.cls}">${t.ic}</div>
+      <div class="qname">${esc(c.name)}</div>
+      <div class="qinfo">${esc(info)}</div>
+      <div class="qdur">${dur}</div>
+      <div class="flags">${flagsHtml(c)}</div>`;
+    frag.appendChild(row);
+    rowEls.set(c.id, row);
+  });
+  list.innerHTML = ''; list.appendChild(frag);
+  markPlaying(); renderStatus();
+}
+function flagsHtml(c) {
+  const f = [];
+  if (c.preWait > 0)  f.push(`<span class="flag on">⏱${c.preWait}s</span>`);
+  if (c.type==='audio' && c.fadeIn > 0)  f.push(`<span class="flag on">↗${c.fadeIn}s</span>`);
+  if (c.fadeOut > 0)  f.push(`<span class="flag on">↘${c.fadeOut}s</span>`);
+  if (c.autoContinue) f.push(`<span class="flag on">⏎ auto</span>`);
+  return f.join('');
+}
+function markCurrent() {
+  rowEls.forEach((el, id) => el.classList.toggle('current', state.cues[state.current]?.id === id));
+}
+function markPlaying() {
+  rowEls.forEach((el, id) => el.classList.toggle('playing', engine.isPlaying(id)));
+}
+function renderStatus() {
+  const c = state.cues[state.current];
+  $('#status').innerHTML = !state.cues.length ? 'No cues'
+    : c ? `Standby → <b>${esc(c.number)} ${esc(c.name)}</b>` : '<b>End of list</b>';
+  $('#go').disabled = !c;
+}
+function scrollCurrentIntoView() {
+  const c = state.cues[state.current]; if (!c) return;
+  rowEls.get(c.id)?.scrollIntoView({ block:'nearest' });
+}
+const cueById = id => state.cues.find(c => c.id === id);
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+/* ----- Inspector ----- */
+function renderInspector() {
+  const box = $('#inspector');
+  const c = state.cues[state.current];
+  if (!c) { box.innerHTML = `<div class="insp-empty">Select a cue to edit its properties.</div>`; return; }
+
+  const audioFields = `
+    <div class="field"><label>Volume</label>
+      <div class="row-flex vol-row">
+        <input type="range" id="f-volume" min="0" max="100" value="${Math.round(c.volume*100)}">
+        <span class="vol-db" id="volDb">${dbLabel(c.volume)}</span></div></div>
+    <div class="grid2">
+      <div class="field"><label>Fade In (s)</label><input type="number" id="f-fadeIn" min="0" step="0.1" value="${c.fadeIn}"></div>
+      <div class="field"><label>Fade Out (s)</label><input type="number" id="f-fadeOut" min="0" step="0.1" value="${c.fadeOut}"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="f-loop" ${c.loop?'checked':''}> Loop</label>`;
+
+  const stopFields = `
+    <div class="field"><label>Target</label>
+      <select id="f-target">
+        <option value="all" ${c.target==='all'?'selected':''}>All cues</option>
+        ${state.cues.filter(x=>x.type==='audio').map(x=>
+          `<option value="${x.id}" ${c.target===x.id?'selected':''}>Cue ${esc(x.number)} — ${esc(x.name)}</option>`).join('')}
+      </select></div>
+    <div class="field"><label>Fade Out (s)</label><input type="number" id="f-fadeOut" min="0" step="0.1" value="${c.fadeOut}"></div>`;
+
+  box.innerHTML = `
+    <div class="grid2">
+      <div class="field"><label>Number</label><input type="text" id="f-number" value="${esc(c.number)}"></div>
+      <div class="field"><label>Type</label>
+        <select id="f-type">
+          <option value="audio" ${c.type==='audio'?'selected':''}>Audio</option>
+          <option value="stop"  ${c.type==='stop'?'selected':''}>Stop / Fade</option>
+          <option value="wait"  ${c.type==='wait'?'selected':''}>Wait</option>
+        </select></div>
+    </div>
+    <div class="field"><label>Name</label><input type="text" id="f-name" value="${esc(c.name)}"></div>
+    ${c.type==='audio' ? audioFields : c.type==='stop' ? stopFields : ''}
+    <div class="field"><label>Pre-wait before firing (s)</label><input type="number" id="f-preWait" min="0" step="0.1" value="${c.preWait}"></div>
+    <label class="chk"><input type="checkbox" id="f-autoContinue" ${c.autoContinue?'checked':''}> Auto-continue (fire next cue too)</label>
+    <div class="insp-actions">
+      <button id="i-up">↑ Up</button>
+      <button id="i-down">↓ Down</button>
+      <button id="i-dup">Duplicate</button>
+      <button id="i-del" class="del">Delete</button>
+    </div>`;
+
+  // wire fields
+  const bind = (id, key, parse) => { const el = $('#'+id); if (!el) return;
+    const ev = el.type==='checkbox'||el.tagName==='SELECT' ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      c[key] = parse(el);
+      if (id==='f-volume') $('#volDb').textContent = dbLabel(c.volume);
+      DB.putMeta(c); markDirty();
+      if (['f-type','f-number','f-name','f-target','f-loop','f-fadeIn','f-fadeOut','f-preWait','f-autoContinue'].includes(id))
+        renderList();                            // these affect the row display
+      if (id==='f-type') renderInspector();      // swap field set
+    });
+  };
+  bind('f-number','number',e=>e.value);
+  bind('f-name','name',e=>e.value);
+  bind('f-type','type',e=>e.value);
+  bind('f-volume','volume',e=>clamp01(e.value/100));
+  bind('f-fadeIn','fadeIn',e=>Math.max(0,+e.value||0));
+  bind('f-fadeOut','fadeOut',e=>Math.max(0,+e.value||0));
+  bind('f-preWait','preWait',e=>Math.max(0,+e.value||0));
+  bind('f-loop','loop',e=>e.checked);
+  bind('f-autoContinue','autoContinue',e=>e.checked);
+  bind('f-target','target',e=>e.value);
+  $('#i-up').onclick   = () => moveCue(state.current, state.current-1);
+  $('#i-down').onclick = () => moveCue(state.current, state.current+1);
+  $('#i-dup').onclick  = () => duplicateCue(state.current);
+  $('#i-del').onclick  = () => deleteCue(state.current);
+}
+
+/* ----- Active-cue monitor (incremental, updated every frame) ----- */
+const monitor = $('#monitor');
+const monEls = new Map();  // pid -> {root, fill, time}
+function renderMonitor() {
+  const live = engine.playing;
+  // remove stale
+  for (const [pid, m] of monEls) if (!live.has(pid)) { m.root.remove(); monEls.delete(pid); }
+  // add new
+  for (const [pid, rec] of live) {
+    if (monEls.has(pid)) continue;
+    const root = document.createElement('div'); root.className = 'mon-item';
+    root.innerHTML = `<div class="mon-top">
+        <div class="mon-name"><span class="q">${esc(rec.num)}</span>${esc(rec.name)}</div>
+        <button class="mon-stop" title="Stop">×</button></div>
+      <div class="mon-bar"><div class="mon-fill"></div></div>
+      <div class="mon-time"><span class="el">0:00</span><span class="re"></span></div>`;
+    root.querySelector('.mon-stop').onclick = () => engine.stopPid(pid, 0.4);
+    monitor.appendChild(root);
+    monEls.set(pid, { root, fill: root.querySelector('.mon-fill'),
+      el: root.querySelector('.el'), re: root.querySelector('.re') });
+  }
+  const n = live.size;
+  $('#monCount').textContent = n ? `(${n})` : '';
+  if (!n && !monitor.querySelector('.mon-empty'))
+    monitor.innerHTML = `<div class="mon-empty">Nothing playing.</div>`;
+  else if (n) { const e = monitor.querySelector('.mon-empty'); if (e) e.remove(); }
+}
+function tick() {
+  const now = engine.ctx.currentTime;
+  for (const [pid, rec] of engine.playing) {
+    const m = monEls.get(pid); if (!m) continue;
+    const elapsed = now - rec.startTime;
+    if (rec.loop) {
+      const pos = rec.duration ? (elapsed % rec.duration) / rec.duration : 0;
+      m.fill.style.width = (pos*100)+'%';
+      m.el.textContent = fmtTime(elapsed % rec.duration);
+      m.re.innerHTML = '<span class="mon-loop">↻ loop</span>';
+    } else {
+      const pos = clamp01(elapsed / rec.duration);
+      m.fill.style.width = (pos*100)+'%';
+      m.el.textContent = fmtTime(elapsed);
+      m.re.textContent = '−' + fmtTime(rec.duration - elapsed);
+    }
+    m.fill.classList.toggle('fading', now >= rec.fadeOutAt);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ---------------------------------------------------------------- Save state */
+let saveTimer = null;
+function markDirty() {
+  $('#saveDot').className = 'save-dot dirty';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    DB.putApp({ current: state.current, master: state.master, order: state.cues.map(c=>c.id) });
+    $('#saveDot').className = 'save-dot saved';
+  }, 500);
+}
+function markClean() { $('#saveDot').className = 'save-dot saved'; }
+
+/* ---------------------------------------------------------------- Drag reorder */
+let dragFrom = null;
+list.addEventListener('dragstart', e => {
+  const row = e.target.closest('.row'); if (!row) return;
+  dragFrom = +row.dataset.i; e.dataTransfer.effectAllowed = 'move';
+});
+list.addEventListener('dragover', e => {
+  e.preventDefault(); const row = e.target.closest('.row'); if (!row) return;
+  const after = e.offsetY > row.offsetHeight / 2;
+  list.querySelectorAll('.dragover-top,.dragover-bot').forEach(r=>r.classList.remove('dragover-top','dragover-bot'));
+  row.classList.add(after ? 'dragover-bot' : 'dragover-top');
+});
+list.addEventListener('drop', e => {
+  e.preventDefault(); const row = e.target.closest('.row');
+  list.querySelectorAll('.dragover-top,.dragover-bot').forEach(r=>r.classList.remove('dragover-top','dragover-bot'));
+  if (!row || dragFrom === null) return;
+  let to = +row.dataset.i; const after = e.offsetY > row.offsetHeight / 2;
+  if (after && to < dragFrom) to++; if (!after && to > dragFrom) to--;
+  if (to !== dragFrom) moveCue(dragFrom, to); dragFrom = null;
+});
+list.addEventListener('click', e => {
+  const row = e.target.closest('.row'); if (row) setCurrent(+row.dataset.i);
+});
+
+/* ---------------------------------------------------------------- Transport UI */
+$('#go').onclick = e => { e.currentTarget.blur(); go(); };  // blur so Space doesn't double-trigger the focused button
+$('#stopAll').onclick = () => engine.stopAll(0);
+$('#pause').onclick = togglePause;
+function togglePause() {
+  state.paused = !state.paused; engine.setPaused(state.paused);
+  const b = $('#pause');
+  b.classList.toggle('paused', state.paused);
+  b.innerHTML = state.paused ? '▶ Resume' : '❙❙ Pause';
+}
+const master = $('#master');
+master.oninput = () => {
+  state.master = master.value/100; engine.setMaster(state.master);
+  $('#masterDb').textContent = dbLabel(state.master); markDirty();
+};
+$('#add').onclick = () => $('#filePick').click();
+$('#filePick').onchange = e => { addFiles(e.target.files); e.target.value=''; };
+$('#menu').onclick = () => {
+  const choice = prompt('Type a command:\n  stop   — add a Stop/Fade cue\n  wait   — add a Wait cue\n  renumber — renumber all cues 1..n\n  clear  — delete the whole show');
+  if (choice === 'stop') addStopCue();
+  else if (choice === 'wait') addWaitCue();
+  else if (choice === 'renumber') { state.cues.forEach((c,i)=>{c.number=String(i+1);DB.putMeta(c);}); afterStructural(); }
+  else if (choice === 'clear' && confirm('Delete every cue?')) {
+    engine.stopAll(0); DB.clearAll(); state.cues = []; state.current = 0; afterStructural();
+  }
+};
+
+/* ---------------------------------------------------------------- Keyboard */
+window.addEventListener('keydown', e => {
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  if (e.code === 'Space' && !typing) { e.preventDefault(); go(); }
+  else if (e.key === 'Escape') { e.preventDefault(); engine.stopAll(0); if (typing) document.activeElement.blur(); }
+  else if (e.key === 'ArrowDown' && !typing) { e.preventDefault(); setCurrent(state.current+1); }
+  else if (e.key === 'ArrowUp' && !typing)   { e.preventDefault(); setCurrent(state.current-1); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && !typing) { e.preventDefault(); deleteCue(state.current); }
+  else if ((e.key === 'p' || e.key === 'P') && !typing) togglePause();
+});
+
+/* ---------------------------------------------------------------- File drop */
+const veil = $('#dropVeil'); let dragDepth = 0;
+window.addEventListener('dragenter', e => { if (e.dataTransfer?.types.includes('Files')) { dragDepth++; veil.classList.add('show'); } });
+window.addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; veil.classList.remove('show'); } });
+window.addEventListener('drop', e => {
+  if (e.dataTransfer?.files?.length) { e.preventDefault(); dragDepth = 0; veil.classList.remove('show'); addFiles(e.dataTransfer.files); }
+});
+
+/* ---------------------------------------------------------------- Boot */
+async function boot() {
+  await DB.open();
+  const [metas, audios, app] = await Promise.all([DB.getAll('meta'), DB.getAll('audio'), DB.getApp()]);
+  const blobs = new Map(audios.map(a => [a.id, a.blob]));
+  const order = app?.order || [];
+  metas.sort((a,b) => order.indexOf(a.id) - order.indexOf(b.id));
+  for (const m of metas) {
+    const cue = { ...newCue(m.type), ...m, buffer: null, blob: null };
+    const blob = blobs.get(cue.id);
+    if (blob) {
+      cue.blob = blob;
+      try { cue.buffer = await engine.decode(await blob.arrayBuffer()); cue.duration = cue.buffer.duration; }
+      catch {}
+    }
+    state.cues.push(cue);
+  }
+  // keep counter ahead of restored ids to avoid collisions
+  state.current = Math.min(app?.current ?? 0, state.cues.length);
+  if (app?.master != null) { state.master = app.master; master.value = Math.round(app.master*100);
+    engine.setMaster(app.master); $('#masterDb').textContent = dbLabel(app.master); }
+  renderList(); renderInspector(); renderMonitor(); markClean();
+  requestAnimationFrame(tick);
+}
+boot();
+</script>
+</body>
+</html>
