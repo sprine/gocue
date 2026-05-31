@@ -62,7 +62,7 @@
   .cols, .row {
     display:grid; align-items:center;
     grid-template-columns: 14px 60px 30px 1fr 150px 76px 132px;
-    gap:10px; padding:0 14px;
+    gap:10px; padding:0 14px 0 32px;   /* left gutter holds the drag grip */
   }
   .cols { height:30px; flex:none; color:var(--ink-faint); font-size:11px;
     text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid var(--line);
@@ -78,6 +78,13 @@
   .row.dragover-top::before, .row.dragover-bot::after {
     content:""; position:absolute; left:0; right:0; height:2px; background:var(--sel); }
   .row.dragover-top::before { top:-1px; } .row.dragover-bot::after { bottom:-1px; }
+  .row.dragging { z-index:5; opacity:.92; background:var(--panel-2); border-radius:6px;
+    box-shadow:0 8px 22px rgba(0,0,0,.55); cursor:grabbing; }
+  .row-grip { position:absolute; left:3px; top:50%; transform:translateY(-50%);
+    width:26px; height:40px; display:grid; place-items:center; color:var(--ink-faint);
+    font-size:15px; cursor:grab; touch-action:none; }
+  .row-grip:hover { color:var(--ink); }
+  .row-grip:active { cursor:grabbing; }
 
   .dot { width:9px; height:9px; border-radius:50%; background:transparent; justify-self:center; }
   .row.playing .dot { background:var(--go); box-shadow:0 0 8px var(--go); animation:pulse 1.4s infinite; }
@@ -173,7 +180,8 @@
     .cols { display:none; }
     .list { padding-bottom:120px; }
     .row { grid-template-columns:14px auto 28px 1fr; gap:9px;
-      height:auto; min-height:62px; padding:8px 46px 8px 12px; }
+      height:auto; min-height:62px; padding:8px 46px 8px 34px; }
+    .row-grip { height:100%; width:30px; font-size:17px; }
     .qinfo, .qdur, .flags { display:none; }
     .qname .sub { display:block; }
     .row-edit { display:grid; }
@@ -502,12 +510,13 @@ function renderList() {
     const t = TYPE[c.type];
     const row = document.createElement('div');
     row.className = 'row' + (i === state.current ? ' current' : '');
-    row.draggable = true; row.dataset.i = i;
+    row.dataset.i = i;
     const info = c.type === 'stop'
       ? (c.target === 'all' ? 'All cues' : 'Cue ' + (cueById(c.target)?.number ?? '?'))
       : (c.fileName || '—');
     const dur = c.type === 'audio' ? (c.loop ? '∞ loop' : fmtTime(c.duration)) : (c.type==='stop'?'':'');
     row.innerHTML = `
+      <button class="row-grip" tabindex="-1" aria-label="Drag to reorder">⠿</button>
       <div class="dot"></div>
       <div class="qnum">${esc(c.number)}</div>
       <div class="type-ic ${t.cls}">${t.ic}</div>
@@ -701,27 +710,64 @@ function markDirty() {
 }
 function markClean() { $('#saveDot').className = 'save-dot saved'; }
 
-/* ---------------------------------------------------------------- Drag reorder */
-let dragFrom = null;
-list.addEventListener('dragstart', e => {
-  const row = e.target.closest('.row'); if (!row) return;
-  dragFrom = +row.dataset.i; e.dataTransfer.effectAllowed = 'move';
+/* ---------------------------------------------------------------- Drag reorder
+   Pointer Events (mouse + touch alike), started from each row's grip handle.
+   The grip has touch-action:none so a touch-drag never scrolls the list, while
+   touches anywhere else still scroll/select normally. */
+let drag = null;  // { from, row, startY, before }
+const clearIndicators = () =>
+  list.querySelectorAll('.dragover-top,.dragover-bot').forEach(r => r.classList.remove('dragover-top','dragover-bot'));
+
+function beforeIndexAt(y) {            // insertion slot 0..n for a given clientY
+  const rows = [...rowEls.values()];
+  for (let k = 0; k < rows.length; k++) {
+    const r = rows[k].getBoundingClientRect();
+    if (y < r.top + r.height / 2) return k;
+  }
+  return rows.length;
+}
+function showIndicator(before) {
+  clearIndicators();
+  const rows = [...rowEls.values()];
+  if (!rows.length) return;
+  if (before >= rows.length) rows[rows.length - 1].classList.add('dragover-bot');
+  else rows[before].classList.add('dragover-top');
+}
+function autoScroll(y) {               // nudge the list when dragging near its edges
+  const r = list.getBoundingClientRect(), pad = 48;
+  if (y < r.top + pad) list.scrollTop -= 9;
+  else if (y > r.bottom - pad) list.scrollTop += 9;
+}
+
+list.addEventListener('pointerdown', e => {
+  const grip = e.target.closest('.row-grip'); if (!grip) return;
+  const row = grip.closest('.row'); if (!row) return;
+  e.preventDefault();
+  drag = { from: +row.dataset.i, row, startY: e.clientY, before: +row.dataset.i };
+  row.classList.add('dragging');
+  list.setPointerCapture(e.pointerId);
+  showIndicator(drag.before);
 });
-list.addEventListener('dragover', e => {
-  e.preventDefault(); const row = e.target.closest('.row'); if (!row) return;
-  const after = e.offsetY > row.offsetHeight / 2;
-  list.querySelectorAll('.dragover-top,.dragover-bot').forEach(r=>r.classList.remove('dragover-top','dragover-bot'));
-  row.classList.add(after ? 'dragover-bot' : 'dragover-top');
+list.addEventListener('pointermove', e => {
+  if (!drag) return;
+  e.preventDefault();
+  drag.row.style.transform = `translateY(${e.clientY - drag.startY}px)`;   // row follows the finger
+  drag.before = beforeIndexAt(e.clientY);
+  showIndicator(drag.before);
+  autoScroll(e.clientY);
 });
-list.addEventListener('drop', e => {
-  e.preventDefault(); const row = e.target.closest('.row');
-  list.querySelectorAll('.dragover-top,.dragover-bot').forEach(r=>r.classList.remove('dragover-top','dragover-bot'));
-  if (!row || dragFrom === null) return;
-  let to = +row.dataset.i; const after = e.offsetY > row.offsetHeight / 2;
-  if (after && to < dragFrom) to++; if (!after && to > dragFrom) to--;
-  if (to !== dragFrom) moveCue(dragFrom, to); dragFrom = null;
-});
+function endDrag() {
+  if (!drag) return;
+  const { from, before, row } = drag; drag = null;
+  row.style.transform = ''; row.classList.remove('dragging');
+  clearIndicators();
+  const to = before > from ? before - 1 : before;   // account for the gap left by removal
+  if (to !== from) moveCue(from, to);
+}
+list.addEventListener('pointerup', endDrag);
+list.addEventListener('pointercancel', endDrag);
 list.addEventListener('click', e => {
+  if (e.target.closest('.row-grip')) return;         // grip is for dragging, not selection
   const row = e.target.closest('.row'); if (!row) return;
   setCurrent(+row.dataset.i);
   if (e.target.closest('.row-edit')) openSheet();   // chevron → open inspector sheet (mobile)
