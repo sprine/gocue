@@ -18,7 +18,7 @@ input,select { font:inherit; }
 
 /* ---------- Toolbar ---------- */
 header {
-  display:flex; align-items:center; gap:14px; padding:10px 14px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; padding:10px 14px;
   background:var(--panel); border-bottom:1px solid var(--line); flex:none;
 }
 .brand { font-weight:700; letter-spacing:.3px; margin-right:4px; }
@@ -35,13 +35,16 @@ header {
   border:1px solid var(--line); color:var(--ink-dim); font-weight:600;
 }
 .tbtn:hover { color:var(--ink); border-color:#3c424d; }
+a.tbtn { text-decoration:none; display:inline-flex; align-items:center; }
 .tbtn.danger:hover { color:#fff; background:var(--stop); border-color:var(--stop); }
 .tbtn.paused { color:var(--warn); border-color:var(--warn); }
 .spacer { flex:1; }
 .master { display:flex; align-items:center; gap:8px; color:var(--ink-dim); }
 .master input[type=range] { width:120px; accent-color:var(--audio); }
 .master .db { font:12px var(--mono); width:54px; text-align:right; color:var(--ink); }
-.status { font:12px var(--mono); color:var(--ink-dim); min-width:120px; }
+/* Status sits on its own full-width row (ordered last) so a long cue description
+   never squeezes the transport buttons — on desktop and mobile alike. */
+.status { font:12px var(--mono); color:var(--ink-dim); order:9; flex:1 1 100%; min-width:0; }
 .status b { color:var(--ink); }
 .save-dot { width:8px; height:8px; border-radius:50%; background:var(--ink-faint); transition:background .3s; }
 .save-dot.dirty { background:var(--warn); }
@@ -164,9 +167,10 @@ aside { width:330px; flex:none; background:var(--panel); border-left:1px solid v
   header { flex-wrap:wrap; gap:8px; padding:8px 10px; }
   header #go, header #pause, header #stopAll { display:none; }
   .brand { font-size:16px; }
-  .status { order:2; flex:1 1 100%; min-width:0; font-size:11px; }
-  .master { order:3; flex:1 1 100%; }
-  .master input[type=range] { flex:1; width:auto; }
+  .spacer { display:none; }   /* desktop-only; on mobile it pushes buttons off-screen */
+  .status { order:2; flex:1 1 100%; min-width:0; font-size:11px; }   /* own full-width row */
+  .master { order:3; flex:1 1 100%; min-width:0; }
+  .master input[type=range] { flex:1; width:auto; min-width:0; }
   #panels, #add, #menu { display:inline-block; touch-action:manipulation; }
   #panels { font-weight:700; }
 

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>About — GoCue</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* This page is a scrolling document, so undo the app shell's fixed layout. */
+  body.doc { overflow:auto; display:block; height:auto; user-select:text; }
+
+  .doc-bar { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:14px;
+    padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .doc-bar .brand { font-size:18px; }
+  .doc-bar a.back { margin-left:auto; text-decoration:none; }
+
+  .doc-wrap { max-width:780px; margin:0 auto; padding:34px 22px 90px; }
+  .doc-wrap h1 { font-size:30px; margin:0 0 6px; }
+  .doc-wrap .lede { color:var(--ink-dim); font-size:16px; margin:0 0 36px; }
+  .doc-wrap h2 { font-size:19px; margin:38px 0 12px; padding-bottom:7px;
+    border-bottom:1px solid var(--line); }
+  .doc-wrap h3 { font-size:15px; margin:22px 0 6px; color:var(--ink); }
+  .doc-wrap p, .doc-wrap li { color:var(--ink-dim); }
+  .doc-wrap p { margin:10px 0; }
+  .doc-wrap b, .doc-wrap strong { color:var(--ink); font-weight:600; }
+  .doc-wrap ul { margin:10px 0; padding-left:22px; }
+  .doc-wrap li { margin:6px 0; }
+  .doc-wrap code, .doc-wrap kbd { font:13px var(--mono); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:5px; padding:1px 6px; color:var(--ink); }
+  .doc-wrap a { color:var(--audio); }
+
+  .pill { display:inline-grid; place-items:center; width:22px; height:22px; border-radius:5px;
+    font-size:12px; font-weight:800; color:#0c0f14; vertical-align:-5px; margin-right:4px; }
+
+  .tech { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin:16px 0; }
+  .tech .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .tech .card h3 { margin:0 0 6px; }
+  .tech .card p { margin:0; font-size:13px; }
+
+  .files { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px 18px; font:12.5px/1.7 var(--mono); color:var(--ink-dim);
+    white-space:pre; overflow-x:auto; }
+  .files b { color:var(--audio); }
+  .files .c { color:var(--ink-faint); }
+
+  .note { background:rgba(40,199,111,.08); border:1px solid var(--go); border-radius:10px;
+    padding:14px 16px; margin:18px 0; }
+  .note p { color:var(--ink); margin:0; }
+</style>
+</head>
+<body class="doc">
+  <div class="doc-bar">
+    <div class="brand"><b style="color:var(--go)">GO</b>CUE</div>
+    <span style="color:var(--ink-faint);font-size:13px">About</span>
+    <a class="tbtn back" href="index.html">← Back to app</a>
+  </div>
+
+  <article class="doc-wrap">
+    <h1>GoCue</h1>
+    <p class="lede">A sound-cue controller for live shows — built in the spirit of QLab, Go Button,
+      and Sound Cues. Build an ordered list of cues, then drive your show with one big <b>GO</b> button.</p>
+
+    <h2>The idea in one paragraph</h2>
+    <p>A show is an ordered <b>cue list</b>. One cue at a time sits on the <b>standby</b> playhead
+      (the highlighted row). Pressing <b>GO</b> fires the standby cue — usually starting a sound —
+      and advances the playhead to the next cue, ready for your next GO. That single, repeatable
+      action is the whole interaction model: during a performance you mostly just press GO on time.
+      Everything else is properties you set on cues beforehand.</p>
+
+    <h2>Cue types</h2>
+    <ul>
+      <li><span class="pill type-audio">♪</span><b>Audio</b> — plays a sound file with optional fades, looping, and level.</li>
+      <li><span class="pill type-stop">■</span><b>Stop / Fade</b> — stops everything, or one targeted cue, optionally fading it out over a set time.</li>
+      <li><span class="pill type-wait">⏱</span><b>Wait</b> — a no-op spacer. Combined with a pre-wait and auto-continue it inserts a timed gap into a sequence.</li>
+    </ul>
+
+    <h2>Cue properties</h2>
+    <ul>
+      <li><b>Volume</b> — per-cue level, shown in dB (0 dB = unchanged, −∞ = silent).</li>
+      <li><b>Fade In / Fade Out</b> — smooth ramps at the start and natural end of a sound.</li>
+      <li><b>Pre-wait</b> — a delay between firing the cue and it actually executing.</li>
+      <li><b>Loop</b> — repeat an audio cue indefinitely until stopped.</li>
+      <li><b>Auto-continue</b> — when this cue fires, the next cue fires too. Chaining auto-continue
+        with each cue's pre-wait lets a single GO trigger a whole timed sequence.</li>
+    </ul>
+
+    <h2>Transport &amp; controls</h2>
+    <ul>
+      <li><b>GO</b> — fire the standby cue (and any auto-continue chain), then advance. <kbd>Space</kbd>.</li>
+      <li><b>Stop All</b> — instantly stop every playing cue and clear the active list. <kbd>Esc</kbd>.</li>
+      <li><b>Pause / Resume</b> — freeze and resume all audio on the spot. <kbd>P</kbd>.</li>
+      <li><b>Master</b> — a global level fader applied to everything.</li>
+      <li><b>Active Cues</b> — a live panel showing what's playing, with progress, time remaining, and per-cue stop.</li>
+      <li>Move the playhead with <kbd>↑</kbd>/<kbd>↓</kbd>, delete the selected cue with <kbd>Delete</kbd>.</li>
+      <li>Reorder cues by dragging the <b>⠿</b> grip handle (works with mouse and touch).</li>
+    </ul>
+
+    <h2>Your show is saved automatically</h2>
+    <p>The entire show — every cue's settings <em>and</em> the audio files themselves — is stored locally
+      in your browser. Reload the page and your show comes back exactly as you left it. The dot in the
+      top-right shows save status (amber = saving, green = saved).</p>
+    <div class="note"><p><b>Everything stays on your device.</b> Audio is decoded and stored locally; nothing
+      is ever uploaded to a server. GoCue has no backend.</p></div>
+
+    <h2>Works on phones &amp; tablets</h2>
+    <p>On small screens the layout adapts: GO and the transport move to a thumb-friendly bar at the
+      bottom, the inspector and active-cues panel become a slide-up sheet (open it with the <b>▤</b>
+      button or a cue's <b>›</b> edit affordance), and cue rows reflow to two lines.</p>
+
+    <h2>Under the hood</h2>
+    <p>GoCue is a single-page app with <b>no framework and no build step</b> — just modern browser APIs
+      and native ES modules loaded straight from disk.</p>
+
+    <div class="tech">
+      <div class="card"><h3>Web Audio API</h3><p>All playback runs through an <code>AudioContext</code>.
+        Each cue is an <code>AudioBufferSourceNode</code> → <code>GainNode</code> → master gain. Fades are
+        sample-accurate scheduled gain ramps; pause uses <code>suspend()</code>/<code>resume()</code> so
+        the clock — and every scheduled fade — freezes precisely.</p></div>
+      <div class="card"><h3>IndexedDB</h3><p>Persistence lives here: cue metadata in one store, the raw
+        audio blobs in another, and app state (order, playhead, master) in a third. The whole thing is a
+        local "show file" that survives reloads.</p></div>
+    </div>
+
+    <h3>Architecture</h3>
+    <p>The design follows John Ousterhout's <i>A Philosophy of Software Design</i>: a few <b>deep modules</b>
+      with simple interfaces, complexity pulled down into them, and views kept loosely coupled by
+      subscribing to events rather than being wired together.</p>
+    <div class="files"><span class="c">// core</span>
+<b>src/util.js</b>      <span class="c">— pure helpers + a tiny event Emitter</span>
+<b>src/audio.js</b>     <span class="c">— AudioEngine: the Web Audio graph &amp; fades</span>
+<b>src/store.js</b>     <span class="c">— Store: IndexedDB (falls back to a no-op store)</span>
+<b>src/show.js</b>      <span class="c">— Show: the model; orchestrates audio + storage, emits events</span>
+<span class="c">// views (each subscribes to the model; none imports another)</span>
+<b>src/views/cue-list.js</b>   <span class="c">— list render, selection, drag reorder</span>
+<b>src/views/inspector.js</b>  <span class="c">— the cue property editor</span>
+<b>src/views/monitor.js</b>    <span class="c">— the live active-cues panel</span>
+<b>src/views/transport.js</b>  <span class="c">— GO/Stop/Pause, keyboard, file-drop, sheet</span>
+<b>src/app.js</b>       <span class="c">— composition root: builds and wires everything</span></div>
+    <p>Because views only listen for events like <code>cues</code>, <code>current</code>, or audio
+      <code>change</code>, adding a new view — a clock, a waveform, MIDI triggers — is purely additive:
+      a new module that subscribes, with no edits to the existing ones.</p>
+
+    <p style="margin-top:40px"><a class="tbtn back" href="index.html" style="text-decoration:none">← Back to app</a></p>
+  </article>
+</body>
+</html>
